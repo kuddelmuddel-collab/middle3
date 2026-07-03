@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2026 통합 수강신청 시스템</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f1f3f5; font-family: 'Pretendard', sans-serif; padding-bottom: 100px; }
+        .section-title { border-left: 5px solid #0d6efd; padding-left: 10px; margin-bottom: 20px; font-weight: bold; margin-top: 30px; }
+        .course-card { border: none; border-radius: 12px; transition: 0.2s; background: white; margin-bottom: 1rem; }
+        .cart-card { border-left: 5px solid #ffc107; background-color: #fffdf5; }
+        .applied-card-box { border: 2px solid #198754; background-color: #f8fff9; border-radius: 12px; }
+        .status-badge { font-size: 0.75rem; padding: 3px 8px; border-radius: 10px; }
+        #serverTimeDisplay { font-family: monospace; font-weight: bold; color: #d63384; font-size: 1.1rem; }
+        .course-info { font-size: 0.85rem; color: #666; margin-bottom: 2px; }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark bg-dark sticky-top shadow">
+    <div class="container">
+        <a class="navbar-brand fw-bold">🎓 수강신청 PRO</a>
+        <div class="text-white small">
+            서버 시간: <span id="serverTimeDisplay">동기화 중...</span> | <span id="userDisplay"></span>
+        </div>
+    </div>
+</nav>
+
+<div class="container mt-4">
+    <h4 class="section-title">🛒 내 수강바구니 (찜)</h4>
+    <div id="cartContainer" class="row g-3 mb-4"></div>
+
+    <h4 class="section-title">📚 전체 강의 목록</h4>
+    <div id="courseContainer" class="row g-3 mb-5"></div>
+
+    <hr>
+
+    <h4 class="section-title text-success">✅ 나의 신청 완료 내역</h4>
+    <div id="appliedContainer" class="row g-3">
+        <p class="ps-3 text-muted small text-center py-4 w-100">아직 신청 완료된 내역이 없습니다.</p>
+    </div>
+</div>
+
+<script>
+    // ⭐ [시간 설정] 모든 과목의 오픈 시간을 여기서 한 번에 조절하세요!
+    const globalOpenTime = "2026-06-27 15:03:00";
+
+    const courses = [
+        { id: 1, title: "현대사회와 데이팅", prof: "심지원", limit: 5, time: "월 13:00-15:00", loc: "백S208" },
+        { id: 2, title: "사랑과 결혼", prof: "양재연", limit: 3, time: "월 13:00-15:00", loc: "위204" },
+        { id: 3, title: "퇴근학개론", prof: "정재훈", limit: 4, time: "화 10:00-12:00", loc: "공D604" },
+        { id: 4, title: "회식의 이해", prof: "박채연", limit: 3, time: "화 10:00-12:00", loc: "상본B112" }
+    ];
+
+    const scriptUrl = "https://script.google.com/macros/s/AKfycby0ISLI6SkpCm0cfRbdUyhJ_c6-Dhk-TOSehzdhq06xRAyE0YgpltjfEsV2o8aW5S_JAQ/exec";
+
+    let serverNow = new Date();
+    let latestStats = {};
+    let isDataLoaded = false;
+    let myCart = JSON.parse(localStorage.getItem('myCart')) || [];
+    let myApplied = JSON.parse(localStorage.getItem('myApplied')) || []; 
+    const user = JSON.parse(localStorage.getItem('user'));
+
+    window.onload = () => {
+        if(!user) return location.href = 'index.html';
+        document.getElementById('userDisplay').innerText = `${user.name}(${user.id})`;
+        render();
+        updateData();
+        setInterval(() => {
+            serverNow.setSeconds(serverNow.getSeconds() + 1);
+            document.getElementById('serverTimeDisplay').innerText = serverNow.toLocaleTimeString();
+            render(); 
+        }, 1000);
+        setInterval(updateData, 5000);
+        window.onfocus = () => { updateData(); };
+    };
+
+    async function updateData() {
+        try {
+            const res = await fetch(scriptUrl);
+            const data = await res.json();
+            if (data.serverTime) {
+                serverNow = new Date(data.serverTime);
+                latestStats = data.stats || {};
+                isDataLoaded = true;
+                render();
+            }
+        } catch (e) { console.warn("서버 동기화 중..."); }
+    }
+
+    function render() {
+        const container = document.getElementById('courseContainer');
+        const cartContainer = document.getElementById('cartContainer');
+        const appliedContainer = document.getElementById('appliedContainer');
+
+        container.innerHTML = courses.map(c => createCardHtml(c, 'all')).join('');
+        
+        const cartItems = courses.filter(c => myCart.includes(c.title));
+        cartContainer.innerHTML = cartItems.length > 0 
+            ? cartItems.map(c => createCardHtml(c, 'cart')).join('')
+            : '<p class="ps-3 text-muted small">바구니가 비어 있습니다.</p>';
+
+        const appliedItems = courses.filter(c => myApplied.includes(c.title));
+        appliedContainer.innerHTML = appliedItems.length > 0 
+            ? appliedItems.map(c => createCardHtml(c, 'applied')).join('')
+            : '<p class="ps-3 text-muted small text-center py-4 w-100">아직 신청 완료된 내역이 없습니다.</p>';
+    }
+
+    function createCardHtml(c, type) {
+        const count = latestStats[c.title] || 0;
+        const left = Math.max(0, c.limit - count);
+        const isFull = count >= c.limit;
+        
+        
+        // ⭐ 개별 openTime 대신 globalOpenTime 사용
+        const openDate = new Date(globalOpenTime); 
+        const serverTime = new Date(serverNow);
+        const isStarted = serverTime >= openDate;
+        const isAlreadyDone = myApplied.includes(c.title);
+        
+        if (type === 'applied') {
+            return `
+                <div class="col-md-4">
+                    <div class="card course-card applied-card-box shadow-sm p-3">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h6 class="fw-bold mb-0 text-success">${c.title}</h6>
+                            <button onclick="cancelApply('${c.title}')" class="btn btn-sm btn-outline-danger" style="font-size: 0.7rem;">신청취소</button>
+                        </div>
+                        <p class="text-muted small mb-0">${c.prof} 교수 | ${c.time} | ${c.loc}</p>
+                    </div>
+                </div>`;
+        }
+
+        let btnLabel = isAlreadyDone ? "신청 완료" : (!isDataLoaded ? "연결 중..." : (isFull ? "정원 초과" : (isStarted ? "신청하기" : "시간 전")));
+        let btnClass = isAlreadyDone ? "btn-success" : (isStarted && !isFull && isDataLoaded ? "btn-primary" : "btn-secondary");
+        let isDisable = isAlreadyDone || !isDataLoaded || isFull || !isStarted;
+
+        return `
+            <div class="col-md-4">
+                <div class="card course-card shadow-sm p-3 ${type === 'cart' ? 'cart-card' : ''}">
+                    <h6 class="fw-bold mb-1">${c.title}</h6>
+                    <p class="text-primary small mb-1 fw-bold">${c.prof} 교수</p>
+                    <div class="course-info mb-2">🕒 ${c.time} | 📍 ${c.loc}</div>
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <span class="badge ${isFull ? 'bg-secondary' : 'bg-primary'} status-badge">남은: ${isDataLoaded ? Math.max(0, left) : '?'}석</span>
+                        <span class="small ${isStarted ? 'text-success' : 'text-danger'} fw-bold">${isAlreadyDone ? '완료' : (isStarted ? '신청 중' : '대기')}</span>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button onclick="toggleCart('${c.title}')" class="btn btn-sm btn-outline-warning" ${isAlreadyDone ? 'disabled' : ''}>
+                            ${myCart.includes(c.title) ? '❌' : '🛒'}
+                        </button>
+                        <button onclick="apply('${c.title}', ${isFull}, ${isStarted})" 
+                                class="btn btn-sm ${btnClass} flex-grow-1" ${isDisable ? 'disabled' : ''}>
+                            ${btnLabel}
+                        </button>
+                    </div>
+                </div>
+            </div>`;
+    }
+
+    function toggleCart(title) {
+        myCart = myCart.includes(title) ? myCart.filter(i => i !== title) : [...myCart, title];
+        localStorage.setItem('myCart', JSON.stringify(myCart));
+        render();
+    }
+
+    async function apply(title, isFull, isStarted) {
+        if (myApplied.includes(title)) return alert("이미 신청한 과목입니다.");
+        if(!confirm(`[${title}] 신청하시겠습니까?`)) return;
+        const btn = event.target;
+        btn.disabled = true;
+        btn.innerText = "처리 중...";
+        try {
+            await fetch(scriptUrl, {
+                method: "POST",
+                mode: "no-cors",
+                body: JSON.stringify({ type: "apply", studentId: user.id, studentName: user.name, courseName: title })
+            });
+            myApplied.push(title);
+            localStorage.setItem('myApplied', JSON.stringify(myApplied));
+            alert(`${title} 신청 완료!`);
+            location.reload(); 
+        } catch (e) { alert("연결 오류"); btn.disabled = false; }
+    }
+
+    async function cancelApply(title) {
+        if(!confirm(`[${title}] 수강을 취소하시겠습니까?\n수강 취소 후 수강 희망 시 재신청 해주세요.`)) return;
+        const btn = event.target;
+        const originalText = btn.innerText;
+        btn.disabled = true;
+        btn.innerText = "취소 중...";
+        try {
+            await fetch(scriptUrl, {
+                method: "POST",
+                mode: "no-cors",
+                body: JSON.stringify({ type: "cancel", studentId: user.id, courseName: title })
+            });
+            myApplied = myApplied.filter(t => t !== title);
+            localStorage.setItem('myApplied', JSON.stringify(myApplied));
+            alert(`${title} 취소 요청 완료!`);
+            location.reload(); 
+        } catch (e) { alert("연결 오류"); btn.disabled = false; btn.innerText = originalText; }
+    }
+</script>
+</body>
+</html>
