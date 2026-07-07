@@ -43,7 +43,6 @@
 </div>
 
 <script>
-    // ⭐ [시간 설정] 모든 과목의 오픈 시간을 여기서 한 번에 조절하세요!
     const globalOpenTime = "2026-07-07 15:15:00";
 
     const courses = [
@@ -57,8 +56,10 @@
     let serverNow = new Date();
     let latestStats = {};
     let isDataLoaded = false;
-    let myCart = JSON.parse(localStorage.getItem('myCart')) || [];
-    let myApplied = JSON.parse(localStorage.getItem('myApplied')) || []; 
+    
+    // 💡 중3 전용 고유 키(middle3) 적용 완료
+    let myCart = JSON.parse(localStorage.getItem('myCart_middle3')) || [];
+    let myApplied = JSON.parse(localStorage.getItem('myApplied_middle3')) || []; 
     const user = JSON.parse(localStorage.getItem('user'));
 
     window.onload = () => {
@@ -93,6 +94,8 @@
         const cartContainer = document.getElementById('cartContainer');
         const appliedContainer = document.getElementById('appliedContainer');
 
+        if(!container || !cartContainer || !appliedContainer) return;
+
         container.innerHTML = courses.map(c => createCardHtml(c, 'all')).join('');
         
         const cartItems = courses.filter(c => myCart.includes(c.title));
@@ -111,8 +114,6 @@
         const left = Math.max(0, c.limit - count);
         const isFull = count >= c.limit;
         
-        
-        // ⭐ 개별 openTime 대신 globalOpenTime 사용
         const openDate = new Date(globalOpenTime); 
         const serverTime = new Date(serverNow);
         const isStarted = serverTime >= openDate;
@@ -124,7 +125,7 @@
                     <div class="card course-card applied-card-box shadow-sm p-3">
                         <div class="d-flex justify-content-between align-items-start mb-2">
                             <h6 class="fw-bold mb-0 text-success">${c.title}</h6>
-                            <button onclick="cancelApply('${c.title}')" class="btn btn-sm btn-outline-danger" style="font-size: 0.7rem;">신청취소</button>
+                            <button onclick="cancelApply('${c.title}', this)" class="btn btn-sm btn-outline-danger" style="font-size: 0.7rem;">신청취소</button>
                         </div>
                         <p class="text-muted small mb-0">${c.prof} 교수 | ${c.time} | ${c.loc}</p>
                     </div>
@@ -142,14 +143,14 @@
                     <p class="text-primary small mb-1 fw-bold">${c.prof} 교수</p>
                     <div class="course-info mb-2">🕒 ${c.time} | 📍 ${c.loc}</div>
                     <div class="d-flex justify-content-between align-items-center mb-3">
-                        <span class="badge ${isFull ? 'bg-secondary' : 'bg-primary'} status-badge">남은: ${isDataLoaded ? Math.max(0, left) : '?'}석</span>
+                        <span class="badge ${isFull ? 'bg-secondary' : 'bg-primary'} status-badge">남은: ${isDataLoaded ? left : '?'}석</span>
                         <span class="small ${isStarted ? 'text-success' : 'text-danger'} fw-bold">${isAlreadyDone ? '완료' : (isStarted ? '신청 중' : '대기')}</span>
                     </div>
                     <div class="d-flex gap-2">
                         <button onclick="toggleCart('${c.title}')" class="btn btn-sm btn-outline-warning" ${isAlreadyDone ? 'disabled' : ''}>
                             ${myCart.includes(c.title) ? '❌' : '🛒'}
                         </button>
-                        <button onclick="apply('${c.title}', ${isFull}, ${isStarted})" 
+                        <button onclick="apply('${c.title}', ${isFull}, ${isStarted}, this)" 
                                 class="btn btn-sm ${btnClass} flex-grow-1" ${isDisable ? 'disabled' : ''}>
                             ${btnLabel}
                         </button>
@@ -160,16 +161,19 @@
 
     function toggleCart(title) {
         myCart = myCart.includes(title) ? myCart.filter(i => i !== title) : [...myCart, title];
-        localStorage.setItem('myCart', JSON.stringify(myCart));
+        localStorage.setItem('myCart_middle3', JSON.stringify(myCart));
         render();
     }
 
-    async function apply(title, isFull, isStarted) {
+    async function apply(title, isFull, isStarted, btnElement) {
         if (myApplied.includes(title)) return alert("이미 신청한 과목입니다.");
         if(!confirm(`[${title}] 신청하시겠습니까?`)) return;
-        const btn = event.target;
-        btn.disabled = true;
-        btn.innerText = "처리 중...";
+        
+        if(btnElement) {
+            btnElement.disabled = true;
+            btnElement.innerText = "처리 중...";
+        }
+        
         try {
             await fetch(scriptUrl, {
                 method: "POST",
@@ -177,18 +181,26 @@
                 body: JSON.stringify({ type: "apply", studentId: user.id, studentName: user.name, courseName: title })
             });
             myApplied.push(title);
-            localStorage.setItem('myApplied', JSON.stringify(myApplied));
+            localStorage.setItem('myApplied_middle3', JSON.stringify(myApplied));
             alert(`${title} 신청 완료!`);
             location.reload(); 
-        } catch (e) { alert("연결 오류"); btn.disabled = false; }
+        } catch (e) { 
+            alert("연결 오류"); 
+            if(btnElement) {
+                btnElement.disabled = false;
+                btnElement.innerText = "신청하기";
+            }
+        }
     }
 
-    async function cancelApply(title) {
+    async function cancelApply(title, btnElement) {
         if(!confirm(`[${title}] 수강을 취소하시겠습니까?\n수강 취소 후 수강 희망 시 재신청 해주세요.`)) return;
-        const btn = event.target;
-        const originalText = btn.innerText;
-        btn.disabled = true;
-        btn.innerText = "취소 중...";
+        
+        if(btnElement) {
+            btnElement.disabled = true;
+            btnElement.innerText = "취소 중...";
+        }
+        
         try {
             await fetch(scriptUrl, {
                 method: "POST",
@@ -196,10 +208,16 @@
                 body: JSON.stringify({ type: "cancel", studentId: user.id, courseName: title })
             });
             myApplied = myApplied.filter(t => t !== title);
-            localStorage.setItem('myApplied', JSON.stringify(myApplied));
+            localStorage.setItem('myApplied_middle3', JSON.stringify(myApplied));
             alert(`${title} 취소 요청 완료!`);
             location.reload(); 
-        } catch (e) { alert("연결 오류"); btn.disabled = false; btn.innerText = originalText; }
+        } catch (e) { 
+            alert("연결 오류"); 
+            if(btnElement) {
+                btnElement.disabled = false;
+                btnElement.innerText = "신청취소";
+            }
+        }
     }
 </script>
 </body>
