@@ -43,7 +43,7 @@
 </div>
 
 <script>
-    // ⭐ [시간 설정 수정] 해외 접속 시 타임존이 틀어지는 문제를 막기 위해 ISO 표준 규격(+09:00) 적용
+    // ⏰ 요청하신 15:15:00 정각 오픈 세팅 및 타임존 강제 고정
     const globalOpenTime = "2026-07-07T15:15:00+09:00";
 
     const courses = [
@@ -58,7 +58,6 @@
     let latestStats = {};
     let isDataLoaded = false;
     
-    // 💡 중3 전용 고유 키(middle3) 적용
     let myCart = JSON.parse(localStorage.getItem('myCart_middle3')) || [];
     let myApplied = JSON.parse(localStorage.getItem('myApplied_middle3')) || []; 
     const user = JSON.parse(localStorage.getItem('user'));
@@ -115,7 +114,6 @@
         const left = Math.max(0, c.limit - count);
         const isFull = count >= c.limit;
         
-        // ⭐ 자바스크립트의 타임존 오차를 최소화하기 위해 타임스탬프 숫자 값(getTime)으로 정밀 비교
         const openDate = new Date(globalOpenTime).getTime(); 
         const serverTime = new Date(serverNow).getTime();
         const isStarted = serverTime >= openDate;
