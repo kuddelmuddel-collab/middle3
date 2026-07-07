@@ -43,7 +43,6 @@
 </div>
 
 <script>
-    // ⏰ 요청하신 15:15:00 정각 오픈 세팅 및 타임존 강제 고정
     const globalOpenTime = "2026-07-07T15:15:00+09:00";
 
     const courses = [
@@ -110,9 +109,15 @@
     }
 
     function createCardHtml(c, type) {
-        const count = latestStats[c.title] || 0;
-        const left = Math.max(0, c.limit - count);
-        const isFull = count >= c.limit;
+        // 🛠️ 숫자로 확실하게 강제 변환(Number 처리)
+        const currentCount = Number(latestStats[c.title]) || 0;
+        const maxLimit = Number(c.limit);
+        
+        // 잔여석 연산 보정
+        let left = maxLimit - currentCount;
+        if (left < 0) left = 0; 
+        
+        const isFull = currentCount >= maxLimit;
         
         const openDate = new Date(globalOpenTime).getTime(); 
         const serverTime = new Date(serverNow).getTime();
